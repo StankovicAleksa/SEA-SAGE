@@ -1,6 +1,9 @@
 # Count points on elliptic curve if the order is prime, if not 
 # break and return unsafe warning
 import numpy
+
+
+
 def count_points(a,b,p):
     if not is_prime(p):
         raise ValueError("Given p={} is not a prime!".format(p))
@@ -21,10 +24,6 @@ def count_points(a,b,p):
     F_pj=PolynomialRing(F_p,'var_j')
 
     fc=F_pX("var_X^3+{}*var_X+{}".format(a,b))
-    #global pol
-    #pol=F_pX("3*var_X^4+6*var_X^2+7*var_X+16")
-    #var_X=var('var_X')
-    #var_j=var('var_j')
     F_pXj.<var_X,var_j>=PolynomialRing(F_p,'var_X,var_j')#PolynomialRing(F_p,'Xj') # construct polynomial ring
     # analyse trace of Frobenius trace against different primes l
     
@@ -32,30 +31,26 @@ def count_points(a,b,p):
     E=[]
     # set of results for Atkin primes
     A=[]
-    # use isogeny cycles for l <= 13 
-    # sea for l>13 
-    # Database of Atkin polynomials
 
-    control_bound=pow(p,0.5)
+    control_bound=2*pow(p,0.5)
     gathered_info=1
-
+    atkin_info=1
     # solve for l = 2 
     pq=fast_power(F_pX("1"),F_pX("var_X"),p,fc)-F_pX("var_X")
     if ( pq.gcd(fc).is_one() ):
         E.append([2,1])
     else:
         E.append([2,0])
-        return -1
+        return -2
     l=2
     AtkinDB = AtkinModularPolynomialDatabase()
     res=1
-    while ( True ):
+    while ( l< 230 and gathered_info <= control_bound):
+
         # make sure we work with l \in F_p
         # do the iteration for next prime
         l=next_prime(l)
         # No more Atkin polynomials available
-        if ( l > 200 or gathered_info > control_bound) :
-            break
 
         gathered_info*=l
         # Extract Atkin polynomial from the database 
@@ -70,10 +65,13 @@ def count_points(a,b,p):
         # Find gcd(X_phi,x1) so that we can use Atkin classification
         G=x1.gcd(X_Phi)
         if ( G.is_constant() ): 
+            if ( atkin_info > 100000 ):
+                gathered_info/=l
+                continue
             #############################################
             # Procedure when l is Atkin prime
             #############################################
-            print("Atkin prime {}".format(l))
+            #print("Atkin prime {}".format(l))
             T_l=[]
             # We will calculate r as r=(l+1)/s, where s is nubmer of irreducible polynomials in G
 
@@ -117,10 +115,11 @@ def count_points(a,b,p):
                     T_l.append(Integer(p_1))
                     if ( p_1 != 0 ):
                         T_l.append(Integer(-p_1))
-            #T_l.sort()
+            T_l.sort()
             A.append([l,T_l])
+            atkin_info*=len(T_l)
             # Escape strategy!!! TODO
-        else:                   
+        else: 
             #############################################
             # Procedure when l is Elkies prime
             #############################################
@@ -128,7 +127,7 @@ def count_points(a,b,p):
             # search Elkies polynomial
             # We calculate l-th division polynomial
             # TODO probably can be faster !!!
-            print("Elkies prime {}".format(l)) 
+            #print("Elkies prime {}".format(l)) 
             m = 18 *b / a
             j_p = m * j
             k=j_p/(1728-j) 
@@ -152,11 +151,6 @@ def count_points(a,b,p):
             ## Calculate f'
             f_p=-j_p*Phi_j/Phi_f
             # checks!!
-            if ( l > 200 ):
-                print (j_Phi)
-                return
-
-            continue;
             roots=j_Phi.roots() ## TODO probably can be faster!
             for root in roots: # try roots
                 tj=root[0]
@@ -268,9 +262,8 @@ def count_points(a,b,p):
                     else:
                         # do all checks
                         for i in range(2,(l-1)//2+1):
-                            # TODO optimize
                             if ( i% 2 == 0 ):
-                                pol_xi=x_p*div2[i]*4*f-x_pqr*div2[i]*4*f+div02[i-1]
+                                pol_xi=4*f*(x_p*div2[i]-x_pqr*div2[i])+div02[i-1]
                             else:
                                 pol_xi=x_p*div2[i]-x_pqr*div2[i]+div02[i-1]*4*f
                             if ( pol_xi == 0 ):
@@ -278,7 +271,7 @@ def count_points(a,b,p):
                                 if ( i%2 ==0 ):
                                     pol_yi=4*f*y_p  *f*8*div2[i]*div[i]    -2*(   div[i+2]*div2[i-1]-div[i-2]*div2[i+1])
                                 else:
-                                    pol_yi=4*f*y_p      *div2[i]*div[i]    -4*f*(div[i+2]*div2[i-1]-div[i-2]*div2[i+1])
+                                    pol_yi=4*f*(y_p      *div2[i]*div[i]    -(div[i+2]*div2[i-1]-div[i-2]*div2[i+1]))
                                 if ( pol_yi==  0 ):
                                     lam=i
                                 else:
@@ -287,12 +280,11 @@ def count_points(a,b,p):
                     t_l=Integer(lam+GF(l)(p)/lam)
                     # Early-Abort strategy
                     if ( (p+1-t_l) % l == 0 or (p+1+t_l) %l ==0 ):
-                        return -1
+                        return -l
                     E.append([l,t_l])
                     break
                     # Indeed good
                     # Proceed to Schoof with phi
-    # When to escape it??
     ################################################################
     #
     # Match-sort algorithm
@@ -326,8 +318,8 @@ def count_points(a,b,p):
     m2=1
     # split A into sets A1 and A2
     for A_l in A:
-        if ( sz1*A_l[0] > 100000 or sz2*A_l[0] > 100000 ):
-            break
+        #if ( sz1*A_l[0] > 1000000 or sz2*A_l[0] > 1000000 ):
+            #break
         if ( sz1 <= sz2) :
             A1.append(A_l)
             sz1*=len(A_l[1])
@@ -343,12 +335,11 @@ def count_points(a,b,p):
     elif ( len(A) == 0 ):
         sz1=0
         sz2=0
-
     # construct sets R_1 and R_2
     r1_set=numpy.empty([sz1],dtype=Integer)
     r2_set=numpy.empty([2*sz2],dtype=Integer)
-    t_set1=numpy.empty([max(sz1,2*sz2)],dtype=Integer) # auxilliary set for constructing r1_set and r2_set
-    t_set2=numpy.empty([max(sz1,2*sz2)],dtype=Integer) # auxilliary set for constructing r1_set and r2_set
+    t_set1=numpy.empty([max(1,sz1,2*sz2)],dtype=Integer) # auxilliary set for constructing r1_set and r2_set
+    t_set2=numpy.empty([max(1,sz1,2*sz2)],dtype=Integer) # auxilliary set for constructing r1_set and r2_set
     m1mE=m1*mE
     m2mE=m2*mE
 
@@ -440,46 +431,77 @@ def count_points(a,b,p):
     r2_set.sort()
     # Match-sort algorithm
     # search for solution
-
     # run for multiple points
     enough_iter=10
     n_iter=0
     Q1=numpy.empty([sz1],dtype=type(El_c.random_point()))
-    #Q1=numpy.empty([sz1],dtype=Integer)
     while( n_iter < enough_iter):
         # Find random point P
         P=El_c.random_point()
         Q=(p+1-tE)*P
-        m1mE_P=m1mE*P
-        m2mE_P=m2mE*P
+        m1mE_P=fast_add(P,m1mE)
+        m2mE_P=fast_add(P,m2mE)
+        m1_data={1:m1mE_P}
+        m2_data={1:m2mE_P}
         # CHECK ATKIN STEPS!
         # Atkin steps were not required!
         if (Q == 0 ):
-            print("ATKIN NOT NECESSARY ")
             return p+1-tE
+        t_P=0
+        t_ind=0
         for i in range(0,len(r1_set)):
-            #Q1[i]=r1_set[i]*m2
-            Q1[i]=(Q-r1_set[i]*m2mE_P)
+            if ( r1_set[i]-t_ind in m2_data.keys() ):
+                t_P=t_P+m2_data[r1_set[i]-t_ind]
+            else:
+                tmp=fast_add(m2mE_P,r1_set[i]-t_ind)
+                t_P=t_P+tmp
+                m2_data[r1_set[i]-t_ind]=tmp
+            t_ind=r1_set[i]
+            Q1[i]=(Q-t_P)
             Q1[i].r1=r1_set[i]
         Q1.sort()
+        #n_iter+=1
+        # temp variable
+        t_P=0
+        t_ind=0
         for i in range(0,len(r2_set)):
-            index=binary_search(Q1,r2_set[i]*m1mE_P)
+            if ( r2_set[i]-t_ind in m1_data.keys() ):
+                t_P=t_P+m1_data[r2_set[i]-t_ind]
+            else:
+                tmp=fast_add(m1mE_P,r2_set[i]-t_ind)
+                t_P=t_P+tmp
+                m1_data[r2_set[i]-t_ind]=tmp
+            t_ind=r2_set[i]
+            index=binary_search(Q1,t_P)
             if ( index!=-1):
                 r1=Q1[index].r1
                 r2=r2_set[i]
                 return p+1-(tE+mE*(r1*m2+r2*m1))
         n_iter+=1
-        
-# calculate a^b mod m
+
+
+
 def fast_power(one,a,b,m):
-    if ( b== 0 ) :
-        return one 
-    r=fast_power(one,a,b//2,m)
-    r=(r*r)%m
-    if ( b%2 == 1 ):
-        r=r*a
-        r%=m
-    return r
+    res=one
+    while ( b != 0 ):
+        if ( b%2==1 ):
+            res*=a
+            res%=m
+        b=b//2
+        a*=a
+        a%=m
+    return res
+def fast_add(a,n):
+    if ( n < 0 ):
+        n=-n
+        a=-a
+    res=0
+    while ( n != 0 ):
+        if ( n%2==1 ):
+            res+=a
+        n=n//2
+        a+=a
+    return res
 def binary_search(array,elem):
     low=0
     high=len(array)-1
@@ -495,16 +517,23 @@ def binary_search(array,elem):
         
        
 import time
-a=231231231252423323213154362654220789709865
-b=23107312023123123313213123124523452345
-p=next_prime(2231238224987808690822570987327809797089711231)
+a=23123122131232131210891213123123123121423123121312132138
+b=2310732134123098410347213132131231233421123421432123213123121
+p=next_prime(2231231381720398123189072139871203213210987312723123)
 ## Elliptic curve is of the form y^2=x^3+ax+b
 def do_test(a,b,p):
     start=time.time()
-    print("my count: {}".format(count_points(a,b,p)))
-    print(time.time()-start)
+    print("\n\n---------------- SAGE implementation -----------------\n")
+    count=count_points(a,b,p)
+    if ( count <0 ):
+        print("Curve or twisted curve has cardinality divisible by small prime: {}".format(-count))
+    else:
+        print("Size of the curve: {}".format(count))
+    print("Time elapsed for calculations: {}".format(time.time()-start))
     start=time.time()
+    print("\n\n---------------- PARI/GP implementation -----------------\n")
     E=EllipticCurve(GF(p),[0,0,0,a,b])
-    print("candidate: {}".format(E.cardinality()))
-    print(time.time()-start)
+    print("Size of the curve: {}".format(E.cardinality()))
+    print("Time elapsed for calculations: {}".format(time.time()-start))
+    print("\n\n")
 do_test(a,b,p)
